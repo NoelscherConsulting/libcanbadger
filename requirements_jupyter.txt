@@ -1,0 +1,9 @@
+jupyter
+matplotlib
+numpy
+plotly
+ipywidgets
+scikit-learn
+ipympl
+pandas
+itables
