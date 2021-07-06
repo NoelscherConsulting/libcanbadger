@@ -9,8 +9,9 @@ class MockInterface(Interface):
 
     def send_frame(self, frame, blocking=True) -> bool:
         self.tx_frames.append(frame)
+        return True
 
-    def receive_frame(self) -> Frame:
+    def receive_frame(self, timeout=0) -> Frame:
         return self.rx_frames.pop(-1)
 
 

@@ -1,9 +1,11 @@
 import enum
+
 import time
-from libcanbadger.CANBadger import CANBadger
+from libcanbadger.canbadger import CANBadger
 from libcanbadger.interface import Interface, InterfaceConnectionStatus
 from libcanbadger.iso_tp.iso_tp_message import IsoTpMessage, IsoTpRxMessageStates
 from libcanbadger.frame import Frame
+
 
 
 class IsoTpHandler(object):
@@ -11,7 +13,7 @@ class IsoTpHandler(object):
     IsoTpHandler defines a bridge between your application and IsoTpMessages
     It handles sending and receiving IsoTpMessages using a single interface
     """
-    def __init__(self, interface: Interface, sender_id: int, padding_byte=None):
+    def __init__(self, interface: type(Interface), sender_id: int, padding_byte=None):
         self.messages = {}
         self.interface = interface
         self.sender_id = sender_id
@@ -69,7 +71,7 @@ class IsoTpHandler(object):
         """
         pass
 
-    def receive_message(self, arb_id: int, timeout=None) -> bytes:
+    def receive_message(self, arb_id: int = None, timeout=None) -> bytes:
         """
         blocks until a message is received with arbitration id = arb_id
         no message is registered
@@ -78,8 +80,10 @@ class IsoTpHandler(object):
         if self.interface.get_connection_status() != InterfaceConnectionStatus.Connected:
             raise Exception("IsoTpHandler: Interface is not connected! Aborting.")
 
-        msg = IsoTpMessage(arb_id=arb_id)
-        msg.arb_id = arb_id
+        if arb_id is not None:
+            msg = IsoTpMessage(arb_id=arb_id)
+        else:
+            msg = IsoTpMessage()
 
         # receive frames and see if we can feed them
         while msg.rx_state != IsoTpRxMessageStates.COMPLETE:
@@ -87,8 +91,8 @@ class IsoTpHandler(object):
             if frame.payload is None:
                 msg.rx_state = IsoTpRxMessageStates.ERROR
                 print('empty frame --> timeout')
-            elif msg.arb_id == frame.arb_id:
-                # filter out tester present messages here TEST
+            elif msg.arb_id is None or msg.arb_id == frame.arb_id:
+                # filter out tester present messages
                 if frame.payload[1] == 0x7f and frame.payload[2] == 0x3e:
                     print('received bad TP response!!')
                 else:

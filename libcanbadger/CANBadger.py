@@ -21,11 +21,11 @@
 # THE SOFTWARE.                                                                     #
 #####################################################################################
 
-from libcanbadger.CANBadgerConnectionProcess import CANBadgerConnectionProcess
+from libcanbadger.canbadger_connection_process import CANBadgerConnectionProcess
 from libcanbadger.ethernet_message import EthernetMessage, EthernetMessageType, ActionType
 from libcanbadger.interface import Interface, InterfaceConnectionStatus
 from libcanbadger.frame import Frame
-from libcanbadger.util.can_settings import CanBadgerSettings
+from libcanbadger.util import CANBadgerSettings
 from multiprocessing import Queue
 from queue import Empty
 import time
@@ -56,7 +56,7 @@ class CANBadger(Interface):
                                                              signal_queue=self.signal_queue,
                                                              ack_queue=self.ack_queue)
 
-    def configure(self, settings: CanBadgerSettings):
+    def configure(self, settings: CANBadgerSettings):
         # send settings to canbadger
         payload = settings.serialize()
         eth_msg = EthernetMessage(EthernetMessageType.ACTION, ActionType.SETTINGS, len(payload), payload)
@@ -94,7 +94,7 @@ class CANBadger(Interface):
         """
         self.get_connection_status()
         if self.connection_status == InterfaceConnectionStatus.Unconnected:
-            if platform.system() == "Linux":
+            if platform.system() == "Linux" or platform.system() == "Darwin":
                 kill(self.connection_process.pid, -1)
             else:
                 subprocess.call(['taskkill', '/F', '/T', '/PID', str(self.connection_process.pid)])
@@ -125,17 +125,14 @@ class CANBadger(Interface):
             return -1
 
         try:
-            eth_msg = self.data_queue.get_nowait()
-            return eth_msg
-        except Empty:
             if timeout is None:
-                return -1
-        try:
-            eth_msg = self.data_queue.get(timeout=timeout)
+
+                eth_msg = self.data_queue.get_nowait()
+            else:
+                eth_msg = self.data_queue.get(timeout=timeout)
             return eth_msg
         except Empty:
-            pass
-        return -1
+            return -1
 
     def send(self, eth_msg, wait_for_ack=False):
         """
@@ -148,7 +145,7 @@ class CANBadger(Interface):
         if wait_for_ack:
             return self.wait_for_ack(1)
         else:
-            return 0
+            return True
 
     # send a canframe out from one of the CANBadgers CAN interfaces
     def send_canframe(self, payload, arb_id, interface=1, extended_id=False):
@@ -192,17 +189,17 @@ class CANBadger(Interface):
             return Frame()
         return Frame(arb_id=arb_id, payload=payload)
 
-    def wait_for_ack(self, timeout=None):
-        try:
-            if timeout:
+    def wait_for_ack(self, timeout=None): # TODO add non blocking version
+        if timeout:
+            try:
                 ack = self.ack_queue.get(timeout=timeout)
-            else:
-                ack = self.ack_queue.get()
-            if ack is None or ack.msg_type == EthernetMessageType.NACK:
-                return -1
-            return 0
-        except Empty:
-            return -1
+            except Empty:
+                return None
+        else:
+            ack = self.ack_queue.get()
+        if ack is None or ack.msg_type == EthernetMessageType.NACK:
+            return False
+        return True
 
     def get_connection_status(self):
         # update local status from signal queue

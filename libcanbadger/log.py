@@ -36,7 +36,7 @@ class FrameEvent(LogEvent):
         return json.dumps({
             'type': self.type,
             'arb_id': hex(self.frame.arb_id),
-            'payload': self.frame.payload.hex(' ')
+            'payload': ' '.join([hex(i) for i in self.frame.payload])
         })
 
     @staticmethod
@@ -49,7 +49,7 @@ class FrameEvent(LogEvent):
         )
 
     def pretty_print(self) -> None:
-        print(f"[{'RX' if self.type == LogEventType.LOG_EVENT_RX_FRAME else 'TX'}] {hex(self.frame.arb_id)} {self.frame.payload.hex(' ')}")
+        print(f"[{'RX' if self.type == LogEventType.LOG_EVENT_RX_FRAME else 'TX'}] {hex(self.frame.arb_id)} {' '.join([hex(i) for i in self.frame.payload])}")
 
 class NamedEvent(LogEvent):
     def __init__(self, name):

@@ -2,6 +2,7 @@ import enum
 import struct
 
 from libcanbadger.frame import Frame
+from libcanbadger.custom_exceptions import IsoTpException
 
 
 class IsoTpRxMessageStates(enum.Enum):
@@ -139,15 +140,23 @@ class IsoTpMessage:
         if len(self.payload) > max_frame_len:
             # multi-frame
             # create first frame
+
+            # encode data length
+            byte_count = len(self.payload)
+            if byte_count > 4095:
+                raise IsoTpException(message=f"Payload Length of {byte_count} exceeds the protocols "
+                                             f"maximum of 4095 bytes")
+            first_short = (byte_count + 0x1000).to_bytes(2, byteorder='big', signed=False)
             frames.append(Frame(
                 arb_id=self.arb_id,
-                payload=b'\x10' + self.payload[:7]
+                payload=first_short + self.payload[:6]
             ))
             # add the remaining CFs
-            for i in range(1, int(len(self.payload)/max_frame_len)+1):
+            for i in range(1, int(byte_count/max_frame_len)+1):
                 frames.append(Frame(
                     arb_id=self.arb_id,
-                    payload=self.pad_message(struct.pack('B', (0x20 | (i % 0x0F))) + self.payload[i * max_frame_len:(1 + i) * max_frame_len])
+                    payload=self.pad_message(struct.pack('B', (0x20 | (i % 0x0F))) +
+                                             self.payload[i * max_frame_len - 1:(1 + i) * max_frame_len - 1])
                 ))
 
             # add last frame

@@ -21,7 +21,7 @@
 # THE SOFTWARE.                                                                     #
 #####################################################################################
 
-from libcanbadger.CANBadger import CANBadger
+from libcanbadger.canbadger import CANBadger
 from enum import Enum
 from libcanbadger.ethernet_message import EthernetMessage, EthernetMessageType, ActionType
 from libcanbadger.interface import InterfaceConnectionStatus
@@ -105,10 +105,9 @@ class Session:
         if wait_for_response:
             if self.ecu_id is None:
                 # accept response from ANY ecu
-                # TODO give isotphandlertoption to do this
-                return None
+                response = self.isotp_handler.receive_message(timeout=timeout)
             else:
-                response = self.isotp_handler.receive_message(self.ecu_id, timeout=timeout)
+                response = self.isotp_handler.receive_message(arb_id=self.ecu_id, timeout=timeout)
 
         # reenable tp
         if self.status == SessionStatus.Idle:
@@ -244,7 +243,7 @@ class Session:
             # self.tp_thread.join() don't wait!
         self.tp_thread = None
 
-    def set_mute_tp(self, state):
+    def set_mute_tp(self, state: bool):
         if state:
             self.mute_tp.set()
         else:

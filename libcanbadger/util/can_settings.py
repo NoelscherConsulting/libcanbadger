@@ -1,5 +1,9 @@
+from __future__ import annotations
 import struct
 import enum
+import ipaddress
+from libcanbadger.custom_exceptions.exceptions import CANBadgerSettingsException
+
 
 class CanbadgerStatusBits(enum.IntEnum):
     SD_ENABLED = 0
@@ -33,7 +37,8 @@ class CanbadgerStatusBits(enum.IntEnum):
     CAN1_MONITOR = 28
     CAN2_MONITOR = 29
 
-class CanBadgerSettings(object):
+
+class CANBadgerSettings(object):
     def __init__(self):
         self.id_str = ""
         self.ip_str = ""
@@ -44,8 +49,48 @@ class CanBadgerSettings(object):
         self.kline1_speed = 0
         self.kline2_speed = 0
 
+        # setting default bits
+        self.set_status_bit(CanbadgerStatusBits.CAN1_STANDARD)
+        self.set_status_bit(CanbadgerStatusBits.CAN2_STANDARD)
+
+    def __eq__(self, other):
+        if not isinstance(other, CANBadgerSettings):
+            return NotImplemented
+
+        equal = self.id_str == other.id_str
+        equal &= self.ip_str == other.ip_str
+        equal &= self.canbadger_status == other.canbadger_status
+        equal &= self.spi_speed == other.spi_speed
+        equal &= self.can1_speed == other.can1_speed
+        equal &= self.can2_speed == other.can2_speed
+        equal &= self.kline1_speed == other.kline1_speed
+        equal &= self.kline2_speed == other.kline2_speed
+        return equal
+
     def set_status_bit(self, bit: int):
+        if bit not in set(sbit for sbit in CanbadgerStatusBits):
+            raise CANBadgerSettingsException(message=f"{bit} is not a valid bit for the CANBadgerStatus.")
         self.canbadger_status |= (1 << bit)
+
+    def unset_status_bit(self, bit: int):
+        if bit not in set(sbit for sbit in CanbadgerStatusBits):
+            raise CANBadgerSettingsException(message=f"{bit} is not a valid bit for the CANBadgerStatus.")
+        self.canbadger_status &= ~(1 << bit)
+
+    def set_id(self, ident: str):
+        if not 0 <= len(ident) < 19:
+            raise CANBadgerSettingsException(message=f"{len(ident)} is not a valid length for a CANBadger ID "
+                                                     f"(0-18 chars).")
+        self.id_str = ident
+
+    def set_ip(self, ip: str):
+        try:
+            ip_obj = ipaddress.ip_address(ip)
+            if type(ip_obj) == ipaddress.IPv6Address:
+                raise CANBadgerSettingsException(message=f"only IPv4 addresses are valid for the CANBadger.")
+            self.ip_str = ip
+        except ValueError:
+            raise CANBadgerSettingsException(message=f"'{ip}' is not a valid IP address.")
 
     def serialize(self) -> bytes:
         """
@@ -61,14 +106,43 @@ class CanBadgerSettings(object):
         ]
 
         payload = b''
-        payload += struct.pack('B', len(self.id_str))
-        if len(self.id_str) > 0 and len(self.id_str) < 16:
+        if 0 < len(self.id_str) < 19:
+            payload += struct.pack('B', len(self.id_str))
             payload += bytes(self.id_str, 'ascii')
-        payload += struct.pack('B', len(self.ip_str))
-        if len(self.ip_str) > 0 and len(self.id_str) < 16:
+        else:
+            payload += struct.pack('B', 0)
+
+        if 0 < len(self.id_str) < 16:
+            payload += struct.pack('B', len(self.ip_str))
             payload += bytes(self.ip_str, 'ascii')
+        else:
+            payload += struct.pack('B', 0)
+
         # write status bits
         payload += struct.pack('<%dI' % len(uint32_settings), *uint32_settings)
         return payload
 
+    @classmethod
+    def deserialize(cls, raw: bytes) -> CANBadgerSettings:
+        settings = CANBadgerSettings()
+
+        # extract id string
+        id_length = raw[0]
+        if id_length < 0 or id_length > 18:
+            raise CANBadgerSettingsException(message=f"Invalid ID length ({id_length}) while unserializing.")
+        settings.id_str = raw[1:id_length + 1].decode('ascii')
+
+        # extract ip string
+        ip_length = raw[id_length + 1]
+        int_start = id_length + ip_length + 2
+        settings.ip_str = raw[id_length + 2:int_start].decode('ascii')
+
+        if len(raw[int_start:]) != 6 * 4:
+            raise CANBadgerSettingsException(message=f"Invalid length of raw settings while unserializing.")
+
+        # get speed and status values
+        settings.canbadger_status, settings.spi_speed, settings.can1_speed, settings.can2_speed, settings.kline1_speed,\
+            settings.kline2_speed = struct.unpack('<IIIIII', raw[int_start:])
+
+        return settings
 
